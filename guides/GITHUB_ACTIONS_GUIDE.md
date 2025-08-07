@@ -143,6 +143,23 @@ pdf_ocr.exe input.pdf
 2. **构建时间**: 完整构建可能需要 10-20 分钟
 3. **存储限制**: GitHub Actions 有存储和时间限制
 4. **版本管理**: 建议使用语义化版本号（如 v1.0.0）
+5. **Artifacts v4**: 本项目已升级到 actions/upload-artifact@v4 和 actions/download-artifact@v4，享受98%的性能提升
+
+## 🆕 Artifacts v4 升级
+
+本项目已完成 GitHub Actions Artifacts v4 升级：
+
+### 主要改进
+- **性能提升**: 上传/下载速度提升 98%
+- **更好的并行处理**: 优化的并发机制
+- **改进的压缩**: 减少存储空间和传输时间
+
+### 升级变化
+- 使用 `actions/upload-artifact@v4` 和 `actions/download-artifact@v4`
+- 调整了 artifact 下载路径结构
+- 优化了 Release 文件路径配置
+
+详细信息请参考：[GitHub Actions v4 升级指南](./GITHUB_ACTIONS_V4_UPGRADE.md)
 
 ## 监控构建状态
 
