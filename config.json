@@ -1,0 +1,17 @@
+{
+  "ocr": {
+    "language": "chi_sim+eng",
+    "dpi": 300,
+    "confidence_threshold": 60
+  },
+  "output": {
+    "format": "txt",
+    "preserve_formatting": true,
+    "output_directory": "./output"
+  },
+  "processing": {
+    "max_workers": 4,
+    "temp_directory": "./temp",
+    "cleanup_temp": true
+  }
+}

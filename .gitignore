@@ -181,7 +181,7 @@ Thumbs.db
 logs/
 
 # Config files (if they contain sensitive data)
-config.json
+# config.json  # 注释掉，因为GitHub Actions需要这个文件
 .env
 
 # Test files
