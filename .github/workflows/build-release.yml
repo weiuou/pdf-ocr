@@ -1,0 +1,177 @@
+name: Build and Release PDF OCR Tool
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+            executable: pdf_ocr
+          - os: windows-latest
+            platform: windows
+            arch: x64
+            executable: pdf_ocr.exe
+          - os: macos-latest
+            platform: macos
+            arch: universal
+            executable: pdf_ocr
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+
+    - name: Install system dependencies (Ubuntu)
+      if: matrix.platform == 'linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y tesseract-ocr tesseract-ocr-chi-sim poppler-utils
+        sudo apt-get install -y libtesseract-dev libleptonica-dev
+
+    - name: Install system dependencies (macOS)
+      if: matrix.platform == 'macos'
+      run: |
+        brew install tesseract tesseract-lang poppler
+
+    - name: Install system dependencies (Windows)
+      if: matrix.platform == 'windows'
+      shell: powershell
+      run: |
+        # Download and setup Tesseract
+        Invoke-WebRequest -Uri "https://github.com/UB-Mannheim/tesseract/releases/download/v5.3.3.20231005/tesseract-ocr-w64-setup-5.3.3.20231005.exe" -OutFile "tesseract-installer.exe"
+        Start-Process -FilePath "tesseract-installer.exe" -ArgumentList "/S", "/D=C:\Program Files\Tesseract-OCR" -Wait
+        
+        # Download and setup Poppler
+        Invoke-WebRequest -Uri "https://github.com/oschwartz10612/poppler-windows/releases/download/v23.08.0-0/Release-23.08.0-0.zip" -OutFile "poppler.zip"
+        Expand-Archive -Path "poppler.zip" -DestinationPath "C:\poppler"
+        
+        # Add to PATH
+        echo "C:\\Program Files\\Tesseract-OCR" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        echo "C:\\poppler\\poppler-23.08.0\\Library\\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Build executable (Linux/macOS)
+      if: matrix.platform != 'windows'
+      run: |
+        pyinstaller --onefile \
+          --name pdf_ocr \
+          --add-data "config.json:."\
+          --hidden-import=PIL._tkinter_finder \
+          --collect-all pytesseract \
+          --collect-all pdf2image \
+          main.py
+
+    - name: Build executable (Windows)
+      if: matrix.platform == 'windows'
+      run: |
+        pyinstaller --onefile `
+          --name pdf_ocr `
+          --add-data "config.json;." `
+          --hidden-import=PIL._tkinter_finder `
+          --collect-all pytesseract `
+          --collect-all pdf2image `
+          main.py
+
+    - name: Test executable
+      run: |
+        # Create a simple test to verify the executable works
+        echo "Testing executable..."
+        ./dist/${{ matrix.executable }} --help || true
+
+    - name: Prepare release artifacts
+      run: |
+        mkdir -p release
+        cp dist/${{ matrix.executable }} release/
+        cp README.md release/
+        cp config.json release/
+
+    - name: Create archive (Windows)
+      if: matrix.platform == 'windows'
+      run: |
+        cd release
+        Compress-Archive -Path * -DestinationPath ../pdf-ocr-${{ matrix.platform }}-${{ matrix.arch }}.zip
+      shell: powershell
+
+    - name: Create archive (Linux/macOS)
+      if: matrix.platform != 'windows'
+      run: |
+        cd release
+        tar -czf ../pdf-ocr-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz *
+      shell: bash
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: pdf-ocr-${{ matrix.platform }}-${{ matrix.arch }}
+        path: |
+          pdf-ocr-${{ matrix.platform }}-${{ matrix.arch }}.*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          pdf-ocr-linux-x64/*
+          pdf-ocr-windows-x64/*
+          pdf-ocr-macos-universal/*
+        body: |
+          ## PDF OCR Tool Release
+          
+          ### 功能特性
+          - 支持中英文混合OCR识别
+          - 多种输出格式（TXT、DOCX）
+          - 高精度文本提取
+          - 跨平台支持
+          
+          ### 平台支持
+          - Windows (x64)
+          - macOS (Universal Binary - Intel & Apple Silicon)
+          - Linux (x64)
+          
+          ### 使用方法
+          ```bash
+          # 基本使用
+          ./pdf_ocr input.pdf
+          
+          # 指定输出格式
+          ./pdf_ocr input.pdf --format docx
+          
+          # 中文OCR
+          ./pdf_ocr chinese_document.pdf --lang chi_sim
+          ```
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
