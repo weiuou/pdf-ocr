@@ -58,7 +58,46 @@ Error: Process completed with exit code 1.
    - 分步骤下载和安装
    - 非关键组件失败时继续执行
 
-### 4. 依赖安装改进
+### 4. GitHub Release权限问题
+
+**问题描述：**
+创建GitHub release时出现403权限错误：
+```
+⚠️ GitHub release failed with status: 403
+undefined
+```
+
+**原因分析：**
+1. **缺少权限设置**: workflow文件没有明确声明所需的权限
+2. **GITHUB_TOKEN权限不足**: 默认token权限可能不包括创建release
+3. **仓库设置问题**: 仓库的Actions权限设置可能有限制
+
+**解决方案：**
+
+1. **添加权限声明**
+   在workflow文件顶部添加：
+   ```yaml
+   permissions:
+     contents: write
+     packages: write
+     actions: read
+   ```
+
+2. **检查仓库设置**
+   - 进入仓库 Settings → Actions → General
+   - 确保 "Workflow permissions" 设置为 "Read and write permissions"
+   - 或者至少允许 "Allow GitHub Actions to create and approve pull requests"
+
+3. **验证token权限**
+   - 确保使用的是 `${{ secrets.GITHUB_TOKEN }}`
+   - 如果问题持续，可以考虑创建个人访问令牌(PAT)
+
+**权限说明：**
+- `contents: write`: 允许创建和修改releases
+- `packages: write`: 允许发布包（如果需要）
+- `actions: read`: 允许读取workflow运行状态
+
+### 5. 依赖安装改进
 
 **新特性：**
 - 跨平台兼容的 Python 脚本检查文件存在性
@@ -108,7 +147,13 @@ python build.py
 
 ## 更新历史
 
-### v1.2 (当前版本)
+### v1.3 (当前版本)
+- 修复GitHub Release权限问题
+- 添加workflow权限声明
+- 完善权限配置指南
+- 增加仓库设置检查说明
+
+### v1.2
 - 修复 Windows 网络下载问题
 - 添加 Chocolatey 包管理器支持
 - 实现自动重试下载机制
