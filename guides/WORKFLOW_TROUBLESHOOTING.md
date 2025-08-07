@@ -29,7 +29,36 @@ PyInstaller 构建时找不到 `config.json` 文件
 - 如果 `config.json` 不存在，会自动创建默认配置文件
 - 默认配置包含所有必需的设置项
 
-### 3. 依赖安装改进
+### 3. Windows 网络下载问题
+
+**问题描述：**
+```
+Invoke-WebRequest : The request was aborted: The connection was closed unexpectedly.
+Error: Process completed with exit code 1.
+```
+
+**原因分析：**
+- GitHub Actions 中的网络连接不稳定
+- 下载大文件时连接超时
+- DNS 解析问题或防火墙限制
+
+**解决方案：**
+1. **多重下载策略**：
+   - 优先使用 Chocolatey 包管理器（更稳定）
+   - 备用手动下载方案
+   - 自动重试机制（最多3次）
+
+2. **改进的错误处理**：
+   - 增加下载超时时间（300秒）
+   - 使用 `-UseBasicParsing` 参数避免IE依赖
+   - 详细的错误日志输出
+
+3. **网络优化**：
+   - 设置适当的安全协议
+   - 分步骤下载和安装
+   - 非关键组件失败时继续执行
+
+### 4. 依赖安装改进
 
 **新特性：**
 - 跨平台兼容的 Python 脚本检查文件存在性
@@ -79,7 +108,14 @@ python build.py
 
 ## 更新历史
 
-### v1.1 (当前版本)
+### v1.2 (当前版本)
+- 修复 Windows 网络下载问题
+- 添加 Chocolatey 包管理器支持
+- 实现自动重试下载机制
+- 改进 Windows 依赖安装的可靠性
+- 增加中文语言包自动下载
+
+### v1.1
 - 添加 `requirements.txt` 自动检查和回退机制
 - 添加 `config.json` 自动创建功能
 - 改进跨平台兼容性
