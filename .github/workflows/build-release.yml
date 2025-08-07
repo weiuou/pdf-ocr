@@ -53,36 +53,62 @@ jobs:
         if: matrix.platform == 'windows'
         shell: powershell
         run: |
-          # 设置错误处理
-          $ErrorActionPreference = "Stop"
-          # 使用 Chocolatey 安装 Tesseract (更可靠的方式)
+          # Set error handling
+          $ErrorActionPreference = "Continue"
+          
+          # Function: Download with retry
+          function Download-WithRetry {
+              param(
+                  [string]$Uri,
+                  [string]$OutFile,
+                  [int]$MaxRetries = 3
+              )
+              
+              for ($i = 1; $i -le $MaxRetries; $i++) {
+                  try {
+                      Write-Host "Attempting download $Uri (attempt $i)"
+                      Invoke-WebRequest -Uri $Uri -OutFile $OutFile -TimeoutSec 300 -UseBasicParsing
+                      Write-Host "Download successful: $OutFile"
+                      return $true
+                  } catch {
+                      Write-Host "Download failed (attempt $i): $($_.Exception.Message)"
+                      if ($i -eq $MaxRetries) {
+                          throw "Download failed after $MaxRetries attempts: $Uri"
+                      }
+                      Start-Sleep -Seconds 10
+                  }
+              }
+              return $false
+          }
+          
+          # Install Tesseract using Chocolatey (more reliable)
           try {
-              Write-Host "使用 Chocolatey 安装 Tesseract..."
+              Write-Host "Installing Tesseract using Chocolatey..."
               Set-ExecutionPolicy Bypass -Scope Process -Force
               [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
               iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
               choco install tesseract --yes --no-progress
               
-              # 安装中文语言包
+              # Install Chinese language pack
               $tessDataPath = "C:\Program Files\Tesseract-OCR\tessdata"
               if (Test-Path $tessDataPath) {
                   Download-WithRetry -Uri "https://github.com/tesseract-ocr/tessdata/raw/main/chi_sim.traineddata" -OutFile "$tessDataPath\chi_sim.traineddata"
               }
               
-              # 添加到 PATH
+              # Add to PATH
               echo "C:\Program Files\Tesseract-OCR" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
               
           } catch {
-              Write-Host "Chocolatey 安装失败，尝试手动下载..."
+              Write-Host "Chocolatey installation failed, trying manual download..."
               
-              # 备用方案：手动下载安装
+              # Fallback: manual download and install
               $tesseractUrl = "https://github.com/UB-Mannheim/tesseract/releases/download/v5.3.3.20231005/tesseract-ocr-w64-setup-5.3.3.20231005.exe"
               Download-WithRetry -Uri $tesseractUrl -OutFile "tesseract-installer.exe"
               
-              Write-Host "安装 Tesseract..."
+              Write-Host "Installing Tesseract..."
               Start-Process -FilePath "tesseract-installer.exe" -ArgumentList "/S", "/D=C:\Program Files\Tesseract-OCR" -Wait
               
-              # 下载中文语言包
+              # Download Chinese language pack
               $tessDataPath = "C:\Program Files\Tesseract-OCR\tessdata"
               if (Test-Path $tessDataPath) {
                   Download-WithRetry -Uri "https://github.com/tesseract-ocr/tessdata/raw/main/chi_sim.traineddata" -OutFile "$tessDataPath\chi_sim.traineddata"
@@ -91,22 +117,22 @@ jobs:
               echo "C:\Program Files\Tesseract-OCR" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           }
 
-          # 安装 Poppler
+          # Install Poppler
           try {
-              Write-Host "下载 Poppler..."
+              Write-Host "Downloading Poppler..."
               $popplerUrl = "https://github.com/oschwartz10612/poppler-windows/releases/download/v23.08.0-0/Release-23.08.0-0.zip"
               Download-WithRetry -Uri $popplerUrl -OutFile "poppler.zip"
               
-              Write-Host "解压 Poppler..."
+              Write-Host "Extracting Poppler..."
               Expand-Archive -Path "poppler.zip" -DestinationPath "C:\poppler" -Force
               
               echo "C:\poppler\poppler-23.08.0\Library\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
               
           } catch {
-              Write-Host "警告: Poppler 安装失败，但可能不影响基本 OCR 功能"
+              Write-Host "Warning: Poppler installation failed, but basic OCR functionality may still work"
           }
 
-          Write-Host "Windows 依赖安装完成"
+          Write-Host "Windows dependencies installation completed"
 
       - name: Install Python dependencies
         run: |
