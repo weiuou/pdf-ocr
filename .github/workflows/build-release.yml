@@ -3,9 +3,9 @@ name: Build and Release PDF OCR Tool
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   pull_request:
-    branches: [ main, master ]
+    branches: [main, master]
   workflow_dispatch:
 
 jobs:
@@ -29,297 +29,271 @@ jobs:
             executable: pdf_ocr
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.12'
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
 
-    - name: Install system dependencies (Ubuntu)
-      if: matrix.platform == 'linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y tesseract-ocr tesseract-ocr-chi-sim poppler-utils
-        sudo apt-get install -y libtesseract-dev libleptonica-dev
+      - name: Install system dependencies (Ubuntu)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr tesseract-ocr-chi-sim poppler-utils
+          sudo apt-get install -y libtesseract-dev libleptonica-dev
 
-    - name: Install system dependencies (macOS)
-      if: matrix.platform == 'macos'
-      run: |
-        brew install tesseract tesseract-lang poppler
+      - name: Install system dependencies (macOS)
+        if: matrix.platform == 'macos'
+        run: |
+          brew install tesseract tesseract-lang poppler
 
-    - name: Install system dependencies (Windows)
-      if: matrix.platform == 'windows'
-      shell: powershell
-      run: |
-        # 设置错误处理
-        $ErrorActionPreference = "Stop"
-        
-        # 函数：带重试的下载
-        function Download-WithRetry {
-            param(
-                [string]$Uri,
-                [string]$OutFile,
-                [int]$MaxRetries = 3
-            )
-            
-            for ($i = 1; $i -le $MaxRetries; $i++) {
-                try {
-                    Write-Host "尝试下载 $Uri (第 $i 次)"
-                    Invoke-WebRequest -Uri $Uri -OutFile $OutFile -TimeoutSec 300 -UseBasicParsing
-                    Write-Host "下载成功: $OutFile"
-                    return $true
-                } catch {
-                    Write-Host "下载失败 (第 $i 次): $($_.Exception.Message)"
-                    if ($i -eq $MaxRetries) {
-                        throw "下载失败，已重试 $MaxRetries 次: $Uri"
-                    }
-                    Start-Sleep -Seconds 10
-                }
-            }
-            return $false
-        }
-        
-        # 使用 Chocolatey 安装 Tesseract (更可靠的方式)
-        try {
-            Write-Host "使用 Chocolatey 安装 Tesseract..."
-            Set-ExecutionPolicy Bypass -Scope Process -Force
-            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-            iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
-            choco install tesseract --yes --no-progress
-            
-            # 安装中文语言包
-            $tessDataPath = "C:\Program Files\Tesseract-OCR\tessdata"
-            if (Test-Path $tessDataPath) {
-                Download-WithRetry -Uri "https://github.com/tesseract-ocr/tessdata/raw/main/chi_sim.traineddata" -OutFile "$tessDataPath\chi_sim.traineddata"
-            }
-            
-            # 添加到 PATH
-            echo "C:\Program Files\Tesseract-OCR" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-            
-        } catch {
-            Write-Host "Chocolatey 安装失败，尝试手动下载..."
-            
-            # 备用方案：手动下载安装
-            $tesseractUrl = "https://github.com/UB-Mannheim/tesseract/releases/download/v5.3.3.20231005/tesseract-ocr-w64-setup-5.3.3.20231005.exe"
-            Download-WithRetry -Uri $tesseractUrl -OutFile "tesseract-installer.exe"
-            
-            Write-Host "安装 Tesseract..."
-            Start-Process -FilePath "tesseract-installer.exe" -ArgumentList "/S", "/D=C:\Program Files\Tesseract-OCR" -Wait
-            
-            # 下载中文语言包
-            $tessDataPath = "C:\Program Files\Tesseract-OCR\tessdata"
-            if (Test-Path $tessDataPath) {
-                Download-WithRetry -Uri "https://github.com/tesseract-ocr/tessdata/raw/main/chi_sim.traineddata" -OutFile "$tessDataPath\chi_sim.traineddata"
-            }
-            
-            echo "C:\Program Files\Tesseract-OCR" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-        }
-        
-        # 安装 Poppler
-        try {
-            Write-Host "下载 Poppler..."
-            $popplerUrl = "https://github.com/oschwartz10612/poppler-windows/releases/download/v23.08.0-0/Release-23.08.0-0.zip"
-            Download-WithRetry -Uri $popplerUrl -OutFile "poppler.zip"
-            
-            Write-Host "解压 Poppler..."
-            Expand-Archive -Path "poppler.zip" -DestinationPath "C:\poppler" -Force
-            
-            echo "C:\poppler\poppler-23.08.0\Library\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-            
-        } catch {
-            Write-Host "警告: Poppler 安装失败，但可能不影响基本 OCR 功能"
-        }
-        
-        Write-Host "Windows 依赖安装完成"
-
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        python -c "
-        import os
-        import subprocess
-        import sys
-        
-        print('Current directory contents:')
-        for item in os.listdir('.'):
-            print(f'  {item}')
-        
-        if os.path.exists('requirements.txt'):
-            print('Found requirements.txt, installing dependencies...')
-            subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'], check=True)
-        else:
-            print('requirements.txt not found, installing dependencies manually...')
-            packages = [
-                'PyMuPDF==1.23.14',
-                'pdf2image==1.16.3', 
-                'pytesseract==0.3.10',
-                'Pillow==10.1.0',
-                'python-docx==1.1.0',
-                'psutil==5.9.6',
-                'tqdm==4.66.1'
-            ]
-            for package in packages:
-                subprocess.run([sys.executable, '-m', 'pip', 'install', package], check=True)
-        
-        # Install PyInstaller
-        subprocess.run([sys.executable, '-m', 'pip', 'install', 'pyinstaller'], check=True)
-        print('All dependencies installed successfully!')
-        "
-
-    - name: Build executable (Linux/macOS)
-      if: matrix.platform != 'windows'
-      run: |
-        # 检查config.json是否存在，如果不存在则创建默认配置
-        if [ ! -f "config.json" ]; then
-          echo "Creating default config.json..."
-          cat > config.json << 'EOF'
-        {
-          "ocr": {
-            "language": "chi_sim+eng",
-            "dpi": 300,
-            "confidence_threshold": 60
-          },
-          "output": {
-            "format": "txt",
-            "preserve_formatting": true,
-            "output_directory": "./output"
-          },
-          "processing": {
-            "max_workers": 4,
-            "temp_directory": "./temp",
-            "cleanup_temp": true
+      - name: Install system dependencies (Windows)
+        if: matrix.platform == 'windows'
+        shell: powershell
+        run: |
+          # 设置错误处理
+          $ErrorActionPreference = "Stop"
+          # 使用 Chocolatey 安装 Tesseract (更可靠的方式)
+          try {
+              Write-Host "使用 Chocolatey 安装 Tesseract..."
+              Set-ExecutionPolicy Bypass -Scope Process -Force
+              [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+              iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+              choco install tesseract --yes --no-progress
+              
+              # 安装中文语言包
+              $tessDataPath = "C:\Program Files\Tesseract-OCR\tessdata"
+              if (Test-Path $tessDataPath) {
+                  Download-WithRetry -Uri "https://github.com/tesseract-ocr/tessdata/raw/main/chi_sim.traineddata" -OutFile "$tessDataPath\chi_sim.traineddata"
+              }
+              
+              # 添加到 PATH
+              echo "C:\Program Files\Tesseract-OCR" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              
+          } catch {
+              Write-Host "Chocolatey 安装失败，尝试手动下载..."
+              
+              # 备用方案：手动下载安装
+              $tesseractUrl = "https://github.com/UB-Mannheim/tesseract/releases/download/v5.3.3.20231005/tesseract-ocr-w64-setup-5.3.3.20231005.exe"
+              Download-WithRetry -Uri $tesseractUrl -OutFile "tesseract-installer.exe"
+              
+              Write-Host "安装 Tesseract..."
+              Start-Process -FilePath "tesseract-installer.exe" -ArgumentList "/S", "/D=C:\Program Files\Tesseract-OCR" -Wait
+              
+              # 下载中文语言包
+              $tessDataPath = "C:\Program Files\Tesseract-OCR\tessdata"
+              if (Test-Path $tessDataPath) {
+                  Download-WithRetry -Uri "https://github.com/tesseract-ocr/tessdata/raw/main/chi_sim.traineddata" -OutFile "$tessDataPath\chi_sim.traineddata"
+              }
+              
+              echo "C:\Program Files\Tesseract-OCR" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           }
-        }
-        EOF
-        fi
-        
-        pyinstaller --onefile \
-          --name pdf_ocr \
-          --add-data "config.json:."\
-          --hidden-import=PIL._tkinter_finder \
-          --collect-all pytesseract \
-          --collect-all pdf2image \
-          main.py
 
-    - name: Build executable (Windows)
-      if: matrix.platform == 'windows'
-      shell: powershell
-      run: |
-        # 检查config.json是否存在，如果不存在则创建默认配置
-        if (-not (Test-Path "config.json")) {
-          Write-Host "Creating default config.json..."
-          @'
-        {
-          "ocr": {
-            "language": "chi_sim+eng",
-            "dpi": 300,
-            "confidence_threshold": 60
-          },
-          "output": {
-            "format": "txt",
-            "preserve_formatting": true,
-            "output_directory": "./output"
-          },
-          "processing": {
-            "max_workers": 4,
-            "temp_directory": "./temp",
-            "cleanup_temp": true
+          # 安装 Poppler
+          try {
+              Write-Host "下载 Poppler..."
+              $popplerUrl = "https://github.com/oschwartz10612/poppler-windows/releases/download/v23.08.0-0/Release-23.08.0-0.zip"
+              Download-WithRetry -Uri $popplerUrl -OutFile "poppler.zip"
+              
+              Write-Host "解压 Poppler..."
+              Expand-Archive -Path "poppler.zip" -DestinationPath "C:\poppler" -Force
+              
+              echo "C:\poppler\poppler-23.08.0\Library\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              
+          } catch {
+              Write-Host "警告: Poppler 安装失败，但可能不影响基本 OCR 功能"
           }
-        }
-        '@ | Out-File -FilePath "config.json" -Encoding UTF8
-        }
-        
-        pyinstaller --onefile `
-          --name pdf_ocr `
-          --add-data "config.json;." `
-          --hidden-import=PIL._tkinter_finder `
-          --collect-all pytesseract `
-          --collect-all pdf2image `
-          main.py
 
-    - name: Test executable
-      run: |
-        # Create a simple test to verify the executable works
-        echo "Testing executable..."
-        ./dist/${{ matrix.executable }} --help || true
+          Write-Host "Windows 依赖安装完成"
 
-    - name: Prepare release artifacts
-      run: |
-        mkdir -p release
-        cp dist/${{ matrix.executable }} release/
-        cp README.md release/
-        cp config.json release/
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -c "
+          import os
+          import subprocess
+          import sys
 
-    - name: Create archive (Windows)
-      if: matrix.platform == 'windows'
-      run: |
-        cd release
-        Compress-Archive -Path * -DestinationPath ../pdf-ocr-${{ matrix.platform }}-${{ matrix.arch }}.zip
-      shell: powershell
+          print('Current directory contents:')
+          for item in os.listdir('.'):
+              print(f'  {item}')
 
-    - name: Create archive (Linux/macOS)
-      if: matrix.platform != 'windows'
-      run: |
-        cd release
-        tar -czf ../pdf-ocr-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz *
-      shell: bash
+          if os.path.exists('requirements.txt'):
+              print('Found requirements.txt, installing dependencies...')
+              subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', 'requirements.txt'], check=True)
+          else:
+              print('requirements.txt not found, installing dependencies manually...')
+              packages = [
+                  'PyMuPDF==1.23.14',
+                  'pdf2image==1.16.3', 
+                  'pytesseract==0.3.10',
+                  'Pillow==10.1.0',
+                  'python-docx==1.1.0',
+                  'psutil==5.9.6',
+                  'tqdm==4.66.1'
+              ]
+              for package in packages:
+                  subprocess.run([sys.executable, '-m', 'pip', 'install', package], check=True)
 
-    - name: Upload build artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: pdf-ocr-${{ matrix.platform }}-${{ matrix.arch }}
-        path: |
-          pdf-ocr-${{ matrix.platform }}-${{ matrix.arch }}.*
+          # Install PyInstaller
+          subprocess.run([sys.executable, '-m', 'pip', 'install', 'pyinstaller'], check=True)
+          print('All dependencies installed successfully!')
+          "
+
+      - name: Build executable (Linux/macOS)
+        if: matrix.platform != 'windows'
+        run: |
+          # 检查config.json是否存在，如果不存在则创建默认配置
+          if [ ! -f "config.json" ]; then
+            echo "Creating default config.json..."
+            cat > config.json << 'EOF'
+          {
+            "ocr": {
+              "language": "chi_sim+eng",
+              "dpi": 300,
+              "confidence_threshold": 60
+            },
+            "output": {
+              "format": "txt",
+              "preserve_formatting": true,
+              "output_directory": "./output"
+            },
+            "processing": {
+              "max_workers": 4,
+              "temp_directory": "./temp",
+              "cleanup_temp": true
+            }
+          }
+          EOF
+          fi
+
+          pyinstaller --onefile \
+            --name pdf_ocr \
+            --add-data "config.json:."\
+            --hidden-import=PIL._tkinter_finder \
+            --collect-all pytesseract \
+            --collect-all pdf2image \
+            main.py
+
+      - name: Build executable (Windows)
+        if: matrix.platform == 'windows'
+        shell: powershell
+        run: |
+          # 检查config.json是否存在，如果不存在则创建默认配置
+          if (-not (Test-Path "config.json")) {
+            Write-Host "Creating default config.json..."
+            @'
+          {
+            "ocr": {
+              "language": "chi_sim+eng",
+              "dpi": 300,
+              "confidence_threshold": 60
+            },
+            "output": {
+              "format": "txt",
+              "preserve_formatting": true,
+              "output_directory": "./output"
+            },
+            "processing": {
+              "max_workers": 4,
+              "temp_directory": "./temp",
+              "cleanup_temp": true
+            }
+          }
+          '@ | Out-File -FilePath "config.json" -Encoding UTF8
+          }
+
+          pyinstaller --onefile `
+            --name pdf_ocr `
+            --add-data "config.json;." `
+            --hidden-import=PIL._tkinter_finder `
+            --collect-all pytesseract `
+            --collect-all pdf2image `
+            main.py
+
+      - name: Test executable
+        run: |
+          # Create a simple test to verify the executable works
+          echo "Testing executable..."
+          ./dist/${{ matrix.executable }} --help || true
+
+      - name: Prepare release artifacts
+        run: |
+          mkdir -p release
+          cp dist/${{ matrix.executable }} release/
+          cp README.md release/
+          cp config.json release/
+
+      - name: Create archive (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          cd release
+          Compress-Archive -Path * -DestinationPath ../pdf-ocr-${{ matrix.platform }}-${{ matrix.arch }}.zip
+        shell: powershell
+
+      - name: Create archive (Linux/macOS)
+        if: matrix.platform != 'windows'
+        run: |
+          cd release
+          tar -czf ../pdf-ocr-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz *
+        shell: bash
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-ocr-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            pdf-ocr-${{ matrix.platform }}-${{ matrix.arch }}.*
 
   release:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: |
-          artifacts/pdf-ocr-linux-x64/*
-          artifacts/pdf-ocr-windows-x64/*
-          artifacts/pdf-ocr-macos-universal/*
-        body: |
-          ## PDF OCR Tool Release
-          
-          ### 功能特性
-          - 支持中英文混合OCR识别
-          - 多种输出格式（TXT、DOCX）
-          - 高精度文本提取
-          - 跨平台支持
-          
-          ### 平台支持
-          - Windows (x64)
-          - macOS (Universal Binary - Intel & Apple Silicon)
-          - Linux (x64)
-          
-          ### 使用方法
-          ```bash
-          # 基本使用
-          ./pdf_ocr input.pdf
-          
-          # 指定输出格式
-          ./pdf_ocr input.pdf --format docx
-          
-          # 中文OCR
-          ./pdf_ocr chinese_document.pdf --lang chi_sim
-          ```
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/pdf-ocr-linux-x64/*
+            artifacts/pdf-ocr-windows-x64/*
+            artifacts/pdf-ocr-macos-universal/*
+          body: |
+            ## PDF OCR Tool Release
+
+            ### 功能特性
+            - 支持中英文混合OCR识别
+            - 多种输出格式（TXT、DOCX）
+            - 高精度文本提取
+            - 跨平台支持
+
+            ### 平台支持
+            - Windows (x64)
+            - macOS (Universal Binary - Intel & Apple Silicon)
+            - Linux (x64)
+
+            ### 使用方法
+            ```bash
+            # 基本使用
+            ./pdf_ocr input.pdf
+
+            # 指定输出格式
+            ./pdf_ocr input.pdf --format docx
+
+            # 中文OCR
+            ./pdf_ocr chinese_document.pdf --lang chi_sim
+            ```
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
