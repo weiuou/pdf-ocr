@@ -145,9 +145,55 @@ python build.py
 - ✅ `main.py`
 - ✅ 所有 Python 模块文件
 
+## 6. Windows Tesseract环境变量问题
+
+### 问题描述
+在Windows上运行PDF OCR工具时出现错误：
+```
+Error opening data file C:\software\Tesseract-OCR/eng.traineddata 
+Please make sure the TESSDATA_PREFIX environment variable is set to your "tessdata" directory.
+Failed loading language 'eng'
+Tesseract couldn't load any languages!
+```
+
+### 原因分析
+1. **TESSDATA_PREFIX环境变量未设置**：Tesseract无法找到语言数据文件
+2. **PATH环境变量缺失**：系统无法找到tesseract.exe
+3. **安装路径问题**：Tesseract安装在非标准路径
+4. **语言包缺失**：缺少必要的语言数据文件
+
+### 解决方案
+
+#### 自动配置（推荐）
+最新版本已包含自动配置功能，会尝试：
+- 自动检测Tesseract安装路径
+- 自动设置TESSDATA_PREFIX环境变量
+- 支持多种常见安装路径
+
+#### 手动配置
+1. **设置系统环境变量**：
+   - 按 `Win + R`，输入 `sysdm.cpl`
+   - 点击"环境变量"
+   - 添加 `TESSDATA_PREFIX` = `C:\Program Files\Tesseract-OCR\tessdata`
+   - 添加 `C:\Program Files\Tesseract-OCR` 到 PATH
+
+2. **验证配置**：
+   ```cmd
+   tesseract --version
+   tesseract --list-langs
+   ```
+
+详细配置指南请参考：[Windows Tesseract配置指南](WINDOWS_TESSERACT_SETUP.md)
+
 ## 更新历史
 
-### v1.3 (当前版本)
+### v1.4 (当前版本)
+- 添加Windows Tesseract环境变量自动配置
+- 创建详细的Windows配置指南
+- 改进OCR引擎的路径检测功能
+- 增加多种常见安装路径支持
+
+### v1.3
 - 修复GitHub Release权限问题
 - 添加workflow权限声明
 - 完善权限配置指南

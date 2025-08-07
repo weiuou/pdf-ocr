@@ -32,7 +32,7 @@ class OCREngine:
         self._check_tesseract()
     
     def _setup_tesseract_path(self):
-        """设置Tesseract路径，支持打包环境"""
+        """设置Tesseract路径，支持打包环境和Windows自动配置"""
         try:
             # 检查是否在PyInstaller打包环境中
             if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
@@ -51,14 +51,84 @@ class OCREngine:
                     os.environ['TESSDATA_PREFIX'] = tessdata_path
                     self.logger.info(f"使用打包的tessdata: {tessdata_path}")
             else:
-                # 在开发环境中，尝试自动检测Tesseract路径
-                tesseract_cmd = shutil.which('tesseract')
-                if tesseract_cmd:
-                    pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
-                    self.logger.info(f"检测到Tesseract: {tesseract_cmd}")
+                # 在开发环境中，尝试自动检测和配置Tesseract路径
+                self._auto_configure_tesseract()
                     
         except Exception as e:
             self.logger.warning(f"设置Tesseract路径时出现警告: {e}")
+    
+    def _auto_configure_tesseract(self):
+        """自动配置Tesseract路径（特别针对Windows）"""
+        import platform
+        
+        # 首先尝试从PATH中找到tesseract
+        tesseract_cmd = shutil.which('tesseract')
+        if tesseract_cmd:
+            pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+            self.logger.info(f"检测到Tesseract: {tesseract_cmd}")
+            
+            # 尝试自动设置TESSDATA_PREFIX
+            if platform.system() == "Windows":
+                self._setup_windows_tessdata(tesseract_cmd)
+        else:
+            # 如果PATH中没有找到，尝试常见的安装路径
+            if platform.system() == "Windows":
+                self._find_windows_tesseract()
+    
+    def _setup_windows_tessdata(self, tesseract_cmd):
+        """为Windows设置TESSDATA_PREFIX环境变量"""
+        try:
+            # 从tesseract.exe路径推断tessdata路径
+            tesseract_dir = os.path.dirname(tesseract_cmd)
+            tessdata_path = os.path.join(tesseract_dir, 'tessdata')
+            
+            if os.path.exists(tessdata_path):
+                os.environ['TESSDATA_PREFIX'] = tessdata_path
+                self.logger.info(f"自动设置TESSDATA_PREFIX: {tessdata_path}")
+            else:
+                # 尝试其他可能的tessdata位置
+                possible_paths = [
+                    os.path.join(os.path.dirname(tesseract_dir), 'tessdata'),
+                    os.path.join(tesseract_dir, '..', 'tessdata'),
+                    r'C:\Program Files\Tesseract-OCR\tessdata',
+                    r'C:\Program Files (x86)\Tesseract-OCR\tessdata'
+                ]
+                
+                for path in possible_paths:
+                    abs_path = os.path.abspath(path)
+                    if os.path.exists(abs_path):
+                        os.environ['TESSDATA_PREFIX'] = abs_path
+                        self.logger.info(f"找到tessdata目录: {abs_path}")
+                        break
+                else:
+                    self.logger.warning("无法找到tessdata目录，可能需要手动设置TESSDATA_PREFIX环境变量")
+                    
+        except Exception as e:
+            self.logger.warning(f"设置Windows tessdata路径失败: {e}")
+    
+    def _find_windows_tesseract(self):
+        """在Windows上查找Tesseract安装"""
+        possible_paths = [
+            r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+            r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+            r'C:\software\Tesseract-OCR\tesseract.exe',
+            r'C:\tools\Tesseract-OCR\tesseract.exe'
+        ]
+        
+        for path in possible_paths:
+            if os.path.exists(path):
+                pytesseract.pytesseract.tesseract_cmd = path
+                self.logger.info(f"找到Tesseract安装: {path}")
+                
+                # 设置对应的tessdata路径
+                tesseract_dir = os.path.dirname(path)
+                tessdata_path = os.path.join(tesseract_dir, 'tessdata')
+                if os.path.exists(tessdata_path):
+                    os.environ['TESSDATA_PREFIX'] = tessdata_path
+                    self.logger.info(f"设置tessdata路径: {tessdata_path}")
+                break
+        else:
+            self.logger.warning("未找到Tesseract安装，请确保已正确安装Tesseract OCR")
     
     def _check_tesseract(self):
         """检查Tesseract是否可用"""
